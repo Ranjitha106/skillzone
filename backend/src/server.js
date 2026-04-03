@@ -14,10 +14,13 @@ dotenv.config();
 const app = express();
 const server = http.createServer(app);
 
-// ✅ CORS
+// ✅ CORS (UPDATED ONLY THIS)
 app.use(
   cors({
-    origin: "http://localhost:3000",
+    origin: [
+      "http://localhost:3000",
+      "https://skillzone-one.vercel.app"
+    ],
     methods: ["GET", "POST", "PUT", "DELETE"],
     credentials: true,
   })
@@ -38,7 +41,10 @@ app.get("/", (req, res) => {
 // ================= SOCKET.IO =================
 const io = new Server(server, {
   cors: {
-    origin: "http://localhost:3000",
+    origin: [
+      "http://localhost:3000",
+      "https://skillzone-one.vercel.app"
+    ],
     methods: ["GET", "POST"],
   },
 });
@@ -61,13 +67,9 @@ io.on("connection", (socket) => {
   });
 
   // 🚪 END SESSION
-  // socket.on("end-session", ({ sessionId }) => {
-  //   console.log("Session ended:", sessionId);
-  //   socket.to(sessionId).emit("session-ended");
-  // });
   socket.on("end-session", ({ sessionId, role }) => {
-  socket.to(sessionId).emit("session-ended", { role });
-});
+    socket.to(sessionId).emit("session-ended", { role });
+  });
 
   // ✅ CODE SYNC
   socket.on("code-change", ({ sessionId, code }) => {
@@ -102,9 +104,8 @@ io.on("connection", (socket) => {
   });
 
   socket.on("language-change", ({ sessionId, language }) => {
-  // Broadcast the new language to others in the room
-  socket.to(sessionId).emit("language-update", language);
-});
+    socket.to(sessionId).emit("language-update", language);
+  });
 
   // ✅ WEBRTC SIGNALING
   socket.on("offer", ({ sessionId, offer }) => {
@@ -122,54 +123,49 @@ io.on("connection", (socket) => {
   socket.on("disconnect", () => {
     console.log("User disconnected:", socket.id);
   });
-  // Inside your io.on("connection") block in server.js
 
-socket.on("run-code", async ({ sessionId, code, language }) => {
-  try {
-    // ✅ Judge0 language IDs
-    const langMap = {
-      javascript: 63,
-      python: 71,
-      java: 62,
-      cpp: 54,
-    };
+  socket.on("run-code", async ({ sessionId, code, language }) => {
+    try {
+      const langMap = {
+        javascript: 63,
+        python: 71,
+        java: 62,
+        cpp: 54,
+      };
 
-    const response = await fetch(
-      "https://ce.judge0.com/submissions?base64_encoded=false&wait=true",
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          source_code: code,
-          language_id: langMap[language],
-        }),
-      }
-    );
+      const response = await fetch(
+        "https://ce.judge0.com/submissions?base64_encoded=false&wait=true",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            source_code: code,
+            language_id: langMap[language],
+          }),
+        }
+      );
 
-    const data = await response.json();
+      const data = await response.json();
 
-    // ✅ Extract output properly
-    const output =
-      data.stdout ||
-      data.stderr ||
-      data.compile_output ||
-      "No output";
+      const output =
+        data.stdout ||
+        data.stderr ||
+        data.compile_output ||
+        "No output";
 
-    // 🔥 Send to BOTH users
-    io.to(sessionId).emit("code-result", output);
+      io.to(sessionId).emit("code-result", output);
 
-  } catch (err) {
-    console.error("JUDGE0 ERROR:", err);
+    } catch (err) {
+      console.error("JUDGE0 ERROR:", err);
 
-    io.to(sessionId).emit(
-      "code-result",
-      "Execution Error: Judge0 failed."
-    );
-  }
-});
-  
+      io.to(sessionId).emit(
+        "code-result",
+        "Execution Error: Judge0 failed."
+      );
+    }
+  });
 });
 
 // ✅ START SERVER
